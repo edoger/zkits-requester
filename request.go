@@ -32,32 +32,93 @@ import (
 )
 
 var (
-	ErrEmptyRequestURL    = errors.New("empty request url")
+	// ErrEmptyRequestURL represents an empty request url error.
+	// When sending a request, this error will be returned if the given request url is empty.
+	ErrEmptyRequestURL = errors.New("empty request url")
+
+	// ErrInvalidRequestBody indicates an invalid request body error.
+	// When sending a request, if the bound request body cannot be recognized, this error is returned.
 	ErrInvalidRequestBody = errors.New("invalid request body")
 )
 
+// Request interface defines client requests.
 type Request interface {
+	// WithMethod adds the default request method of the current request.
 	WithMethod(string) Request
+
+	// WithHeader adds a request header to the current request.
+	// If the given request header value is an empty string, the corresponding request
+	// header will be deleted.
 	WithHeader(string, string) Request
+
+	// WithContentType adds the ContentType header information of the current request.
 	WithContentType(string) Request
+
+	// WithHeaders adds and replaces some headers to the current request.
 	WithHeaders(http.Header) Request
+
+	// WithContext adds a context to the current request.
+	// If the given context is nil, context.Background() is automatically used.
 	WithContext(context.Context) Request
+
+	// WithQuery adds a query parameter to the current request.
 	WithQuery(string, string) Request
+
+	// WithQueryValue adds a query parameter to the current request.
+	// This method will automatically convert the given parameter value to a string.
 	WithQueryValue(string, interface{}) Request
+
+	// WithQueries adds and replaces some query parameters to the current request.
 	WithQueries(url.Values) Request
+
+	// WithTimeout adds a timeout for the current request.
+	// If the given timeout period is zero, the client's timeout setting is used.
 	WithTimeout(time.Duration) Request
+
+	// WithBody adds request body to the current request.
 	WithBody(interface{}) Request
+
+	// WithJSONBody adds the request body as json.
+	// This method will force set "Content-Type" to "application/json".
 	WithJSONBody(interface{}) Request
+
+	// WithRawJSONBody adds the request body as raw json.
+	// This method will force set "Content-Type" to "application/json".
 	WithRawJSONBody([]byte) Request
+
+	// WithXMLBody adds the request body as xml.
+	// This method will force set "Content-Type" to "application/xml".
 	WithXMLBody(interface{}) Request
+
+	// WithRawXMLBody adds the request body as raw xml.
+	// This method will force set "Content-Type" to "application/xml".
 	WithRawXMLBody([]byte) Request
+
+	// WithFormBody adds the request body as form (urlencoded).
+	// This method will force set "Content-Type" to "application/x-www-form-urlencoded".
 	WithFormBody(url.Values) Request
+
+	// Head sends the current request and returns the received response.
+	// This method will send the request using the HEAD method.
 	Head() (Response, error)
+
+	// Get sends the current request and returns the received response.
+	// This method will send the request using the GET method.
 	Get() (Response, error)
+
+	// Post sends the current request and returns the received response.
+	// This method will send the request using the POST method.
 	Post() (Response, error)
+
+	// Send sends the current request and returns the received response.
 	Send() (Response, error)
+
+	// SendBy sends the current request and returns the received response.
+	// This method will send the request using the given request method.
+	SendBy(string) (Response, error)
 }
 
+// The request type is a built-in implementation of the Request interface.
 type request struct {
 	client      *client
 	uri         string
@@ -71,11 +132,15 @@ type request struct {
 	bodyType    string
 }
 
+// WithMethod adds the default request method of the current request.
 func (r *request) WithMethod(method string) Request {
-	r.method = strings.ToUpper(method)
+	r.method = method
 	return r
 }
 
+// WithHeader adds a request header to the current request.
+// If the given request header value is an empty string, the corresponding request
+// header will be deleted.
 func (r *request) WithHeader(key, value string) Request {
 	if value == "" {
 		if len(r.headers) > 0 {
@@ -90,28 +155,27 @@ func (r *request) WithHeader(key, value string) Request {
 	return r
 }
 
+// WithContentType adds the ContentType header information of the current request.
 func (r *request) WithContentType(ct string) Request {
 	r.WithHeader("Content-Type", ct)
 	return r
 }
 
+// WithHeaders adds and replaces some headers to the current request.
 func (r *request) WithHeaders(headers http.Header) Request {
 	r.headers = headers
 	return r
 }
 
+// WithContext adds a context to the current request.
+// If the given context is nil, context.Background() is automatically used.
 func (r *request) WithContext(ctx context.Context) Request {
 	r.ctx = ctx
 	return r
 }
 
+// WithQuery adds a query parameter to the current request.
 func (r *request) WithQuery(key, value string) Request {
-	if value == "" {
-		if len(r.query) > 0 {
-			r.query.Del(key)
-		}
-		return r
-	}
 	if r.query == nil {
 		r.query = make(url.Values, 1)
 	}
@@ -119,20 +183,26 @@ func (r *request) WithQuery(key, value string) Request {
 	return r
 }
 
+// WithQueryValue adds a query parameter to the current request.
+// This method will automatically convert the given parameter value to a string.
 func (r *request) WithQueryValue(key string, value interface{}) Request {
 	return r.WithQuery(key, toString(value))
 }
 
+// WithQueries adds and replaces some query parameters to the current request.
 func (r *request) WithQueries(qs url.Values) Request {
 	r.query = qs
 	return r
 }
 
+// WithTimeout adds a timeout for the current request.
+// If the given timeout period is zero, the client's timeout setting is used.
 func (r *request) WithTimeout(t time.Duration) Request {
 	r.timeout = t
 	return r
 }
 
+// WithBody adds request body to the current request.
 func (r *request) WithBody(body interface{}) Request {
 	r.body = body
 	r.bodyEncoder = ""
@@ -140,6 +210,8 @@ func (r *request) WithBody(body interface{}) Request {
 	return r
 }
 
+// WithJSONBody adds the request body as json.
+// This method will force set "Content-Type" to "application/json".
 func (r *request) WithJSONBody(body interface{}) Request {
 	r.body = body
 	r.bodyEncoder = "json"
@@ -147,6 +219,8 @@ func (r *request) WithJSONBody(body interface{}) Request {
 	return r
 }
 
+// WithRawJSONBody adds the request body as raw json.
+// This method will force set "Content-Type" to "application/json".
 func (r *request) WithRawJSONBody(body []byte) Request {
 	r.body = body
 	r.bodyEncoder = ""
@@ -154,6 +228,8 @@ func (r *request) WithRawJSONBody(body []byte) Request {
 	return r
 }
 
+// WithXMLBody adds the request body as xml.
+// This method will force set "Content-Type" to "application/xml".
 func (r *request) WithXMLBody(body interface{}) Request {
 	r.body = body
 	r.bodyEncoder = "xml"
@@ -161,6 +237,8 @@ func (r *request) WithXMLBody(body interface{}) Request {
 	return r
 }
 
+// WithRawXMLBody adds the request body as raw xml.
+// This method will force set "Content-Type" to "application/xml".
 func (r *request) WithRawXMLBody(body []byte) Request {
 	r.body = body
 	r.bodyEncoder = ""
@@ -168,6 +246,8 @@ func (r *request) WithRawXMLBody(body []byte) Request {
 	return r
 }
 
+// WithFormBody adds the request body as form (urlencoded).
+// This method will force set "Content-Type" to "application/x-www-form-urlencoded".
 func (r *request) WithFormBody(body url.Values) Request {
 	r.body = body
 	r.bodyEncoder = ""
@@ -175,13 +255,13 @@ func (r *request) WithFormBody(body url.Values) Request {
 	return r
 }
 
-// Post sends the current request and returns the received response.
+// Head sends the current request and returns the received response.
 // This method will send the request using the HEAD method.
 func (r *request) Head() (Response, error) {
 	return r.SendBy(http.MethodHead)
 }
 
-// Post sends the current request and returns the received response.
+// Get sends the current request and returns the received response.
 // This method will send the request using the GET method.
 func (r *request) Get() (Response, error) {
 	return r.SendBy(http.MethodGet)
@@ -205,11 +285,11 @@ func (r *request) SendBy(method string) (Response, error) {
 		return nil, ErrEmptyRequestURL
 	}
 
-	if o, err := r.send(method); err != nil {
+	if o, err := r.send(strings.ToUpper(method)); err != nil {
 		return nil, err
 	} else {
 		// For HEAD requests, we ignore the response body.
-		return NewResponse(o, r.method == http.MethodHead)
+		return NewResponse(o, o.Request.Method == http.MethodHead)
 	}
 }
 
@@ -223,7 +303,7 @@ func (r *request) send(method string) (*http.Response, error) {
 		ctx, _ = context.WithTimeout(ctx, r.timeout)
 	} else {
 		if r.client.timeout > 0 {
-			ctx, _ = context.WithTimeout(ctx, r.timeout)
+			ctx, _ = context.WithTimeout(ctx, r.client.timeout)
 		}
 	}
 
@@ -259,10 +339,7 @@ func (r *request) send(method string) (*http.Response, error) {
 		} else {
 			// If query parameters are already attached to the target URL,
 			// we need to overwrite the set query parameters to the target URL.
-			qs, err := url.ParseQuery(req.URL.RawQuery)
-			if err != nil {
-				return nil, err
-			}
+			qs := req.URL.Query()
 			for key, values := range r.query {
 				qs[key] = values
 			}
@@ -298,6 +375,7 @@ func (r *request) makeBodyReader() (io.Reader, error) {
 				return bytes.NewReader(data), nil
 			}
 		}
+		// In theory, this error will never be returned.
 		return nil, fmt.Errorf("invalid request body encoder: %s", r.bodyEncoder)
 	}
 

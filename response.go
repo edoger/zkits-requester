@@ -17,6 +17,7 @@ package requester
 import (
 	"encoding/json"
 	"encoding/xml"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -24,21 +25,27 @@ import (
 
 // Response interface defines the HTTP response result.
 type Response interface {
+	fmt.Stringer
+
 	// Headers method returns all response headers.
 	Headers() http.Header
-	// Cookie returns the cookie data of the given name, or an empty string if it cannot be found.
-	Cookie(string) string
+
 	// StatusCode returns the status code of the response.
 	StatusCode() int
+
 	// Status returns the status text of the response.
 	Status() string
+
 	// Body returns the response body, or nil if there is no response body.
 	// For HEAD request, nil is always returned.
 	Body() []byte
+
 	// Len returns the length of the response body.
 	Len() int
+
 	// JSON binds the response body to the given object as json.
 	JSON(interface{}) error
+
 	// XML binds the response body to the given object as xml.
 	XML(interface{}) error
 }
@@ -52,7 +59,6 @@ func NewResponse(o *http.Response, noBody bool) (Response, error) {
 		code:    o.StatusCode,
 		status:  o.Status,
 		headers: o.Header.Clone(),
-		cookies: o.Cookies(),
 	}
 	if noBody {
 		_, _ = io.Copy(ioutil.Discard, o.Body)
@@ -71,23 +77,12 @@ type response struct {
 	code    int
 	status  string
 	headers http.Header
-	cookies []*http.Cookie
 	body    []byte
 }
 
 // Headers method returns all response headers.
 func (r *response) Headers() http.Header {
 	return r.headers
-}
-
-// Cookie returns the cookie data of the given name, or an empty string if it cannot be found.
-func (r *response) Cookie(name string) string {
-	for i, j := 0, len(r.cookies); i < j; i++ {
-		if r.cookies[i].Name == name {
-			return r.cookies[i].Value
-		}
-	}
-	return ""
 }
 
 // StatusCode returns the status code of the response.
@@ -118,4 +113,9 @@ func (r *response) JSON(o interface{}) error {
 // XML binds the response body to the given object as xml.
 func (r *response) XML(o interface{}) error {
 	return xml.Unmarshal(r.Body(), o)
+}
+
+// String returns the response body string, or empty string if there is no response body.
+func (r *response) String() string {
+	return string(r.body)
 }
