@@ -144,6 +144,12 @@ type Request interface {
 	// If the given reader is nil, delete the corresponding form key.
 	WithFormDataFileFromReader(string, string, io.Reader) Request
 
+	// ClearFormData removes all uploaded form data from the current request.
+	// If you need to reuse the current request instance to send multiple upload requests,
+	// you should clean up each time before setting new form data (for the added file descriptor,
+	// because the position of the cursor is uncertain, it may cause unexpected results ).
+	ClearFormData() Request
+
 	// Upload sends the current upload request and receives the response.
 	// This method will send the request using the POST method.
 	Upload() (Response, error)
@@ -152,6 +158,11 @@ type Request interface {
 	// This method will send the request using the given request method.
 	// This method only supports POST method and PUT method.
 	UploadBy(string) (Response, error)
+
+	// Clear cleans up the current request instance so that it can be reused.
+	// This method will not cut the connection with the client, nor will it
+	// change the request url.
+	Clear() Request
 }
 
 // The request type is a built-in implementation of the Request interface.
@@ -443,22 +454,6 @@ func (r *request) makeBodyReader() (io.Reader, error) {
 	return nil, ErrInvalidRequestBody
 }
 
-// The reset method resets the current instance.
-func (r *request) reset() *request {
-	r.client = nil
-	r.uri = ""
-	r.method = ""
-	r.headers = nil
-	r.ctx = nil
-	r.query = nil
-	r.timeout = 0
-	r.body = nil
-	r.bodyEncoder = ""
-	r.bodyType = ""
-	r.bodyFormData = nil
-	return r
-}
-
 // WithFormDataField adds a form data for uploading to the current request.
 // If the given form value is nil, delete the corresponding form key.
 func (r *request) WithFormDataField(key string, value interface{}) Request {
@@ -508,6 +503,15 @@ func (r *request) withFormData(key string, value *formDataValue) *request {
 		r.bodyFormData = make(map[string][]*formDataValue, 1)
 	}
 	r.bodyFormData[key] = append(r.bodyFormData[key], value)
+	return r
+}
+
+// ClearFormData removes all uploaded form data from the current request.
+// If you need to reuse the current request instance to send multiple upload requests,
+// you should clean up each time before setting new form data (for the added file descriptor,
+// because the position of the cursor is uncertain, it may cause unexpected results ).
+func (r *request) ClearFormData() Request {
+	r.bodyFormData = nil
 	return r
 }
 
@@ -621,6 +625,31 @@ func (r *request) UploadBy(method string) (Response, error) {
 	} else {
 		return NewResponse(o, false)
 	}
+}
+
+// Clear cleans up the current request instance so that it can be reused.
+// This method will not cut the connection with the client, nor will it
+// change the request url.
+func (r *request) Clear() Request {
+	r.method = ""
+	r.headers = nil
+	r.ctx = nil
+	r.query = nil
+	r.timeout = 0
+	r.body = nil
+	r.bodyEncoder = ""
+	r.bodyType = ""
+
+	return r.ClearFormData()
+}
+
+// The reset method resets the current instance.
+func (r *request) reset() *request {
+	r.Clear()
+	r.client = nil
+	r.uri = ""
+
+	return r
 }
 
 // The copyFileContentToFormWriter function writes the contents of a given file to the current upload data.
