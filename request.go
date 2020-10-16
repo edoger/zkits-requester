@@ -139,6 +139,11 @@ type Request interface {
 	// downstream uploaded files as upload targets.
 	WithFormDataFile(string, interface{}) Request
 
+	// WithFormDataFileFromReader adds an upload target to the current request from
+	// the given reader and file name.
+	// If the given reader is nil, delete the corresponding form key.
+	WithFormDataFileFromReader(string, string, io.Reader) Request
+
 	// Upload sends the current upload request and receives the response.
 	// This method will send the request using the POST method.
 	Upload() (Response, error)
@@ -474,6 +479,23 @@ func (r *request) WithFormDataFile(key string, value interface{}) Request {
 	return r.withFormData(key, &formDataValue{file: value})
 }
 
+// The formDataFileReader type is used to warp the io.Reader and a file name
+// into a file target for upload.
+type formDataFileReader struct {
+	name   string
+	reader io.Reader
+}
+
+// WithFormDataFileFromReader adds an upload target to the current request from
+// the given reader and file name.
+// If the given reader is nil, delete the corresponding form key.
+func (r *request) WithFormDataFileFromReader(key string, name string, reader io.Reader) Request {
+	if reader == nil {
+		return r.withFormData(key, nil)
+	}
+	return r.withFormData(key, &formDataValue{file: &formDataFileReader{name: name, reader: reader}})
+}
+
 // The withFormData method adds an upload form data to the current request.
 func (r *request) withFormData(key string, value *formDataValue) *request {
 	if value == nil {
@@ -483,7 +505,7 @@ func (r *request) withFormData(key string, value *formDataValue) *request {
 		return r
 	}
 	if r.bodyFormData == nil {
-		r.bodyFormData = make(map[string][]*formDataValue)
+		r.bodyFormData = make(map[string][]*formDataValue, 1)
 	}
 	r.bodyFormData[key] = append(r.bodyFormData[key], value)
 	return r
@@ -513,7 +535,6 @@ func (r *request) UploadBy(method string) (Response, error) {
 
 	b := new(bytes.Buffer)
 	w := multipart.NewWriter(b)
-	defer func() { _ = w.Close() }()
 
 	keys := make([]string, 0, len(r.bodyFormData))
 	for key := range r.bodyFormData {
@@ -571,10 +592,24 @@ func (r *request) UploadBy(method string) (Response, error) {
 				if err := copyUploadFileContentToFormWriter(key, v, w); err != nil {
 					return nil, err
 				}
+			case *formDataFileReader:
+				fw, err := w.CreateFormFile(key, filepath.Base(v.name))
+				if err != nil {
+					return nil, err
+				}
+				if _, err = io.Copy(fw, v.reader); err != nil {
+					return nil, err
+				}
 			default:
 				return nil, ErrInvalidUploadBody
 			}
 		}
+	}
+
+	// It must be closed before the request is sent, otherwise the content of
+	// the request body will be incomplete.
+	if err := w.Close(); err != nil {
+		return nil, err
 	}
 
 	r.body = b
