@@ -23,9 +23,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"reflect"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -39,6 +43,14 @@ var (
 	// ErrInvalidRequestBody indicates an invalid request body error.
 	// When sending a request, if the bound request body cannot be recognized, this error is returned.
 	ErrInvalidRequestBody = errors.New("invalid request body")
+
+	// ErrEmptyUploadBody represents an empty upload body error.
+	// When sending an upload request, this error is returned when the upload data is empty.
+	ErrEmptyUploadBody = errors.New("empty upload body")
+
+	// ErrInvalidUploadBody indicates an invalid upload body error.
+	// When sending an upload request, this error is returned when the bound upload data is invalid.
+	ErrInvalidUploadBody = errors.New("invalid upload body")
 )
 
 // Request interface defines client requests.
@@ -116,20 +128,46 @@ type Request interface {
 	// SendBy sends the current request and returns the received response.
 	// This method will send the request using the given request method.
 	SendBy(string) (Response, error)
+
+	// WithFormDataField adds a form data for uploading to the current request.
+	// If the given form value is nil, delete the corresponding form key.
+	WithFormDataField(string, interface{}) Request
+
+	// WithFormDataFile adds a file target for uploading to the current request.
+	// If the given form value is nil, delete the corresponding form key.
+	// This method supports adding string paths, opened file descriptors and
+	// downstream uploaded files as upload targets.
+	WithFormDataFile(string, interface{}) Request
+
+	// Upload sends the current upload request and receives the response.
+	// This method will send the request using the POST method.
+	Upload() (Response, error)
+
+	// UploadBy sends the current upload request and receives the response.
+	// This method will send the request using the given request method.
+	// This method only supports POST method and PUT method.
+	UploadBy(string) (Response, error)
 }
 
 // The request type is a built-in implementation of the Request interface.
 type request struct {
-	client      *client
-	uri         string
-	method      string
-	headers     http.Header
-	ctx         context.Context
-	query       url.Values
-	timeout     time.Duration
-	body        interface{}
-	bodyEncoder string
-	bodyType    string
+	client       *client
+	uri          string
+	method       string
+	headers      http.Header
+	ctx          context.Context
+	query        url.Values
+	timeout      time.Duration
+	body         interface{}
+	bodyFormData map[string][]*formDataValue
+	bodyEncoder  string
+	bodyType     string
+}
+
+// The formDataValue type defines a single upload form data.
+type formDataValue struct {
+	field string
+	file  interface{}
 }
 
 // WithMethod adds the default request method of the current request.
@@ -412,7 +450,174 @@ func (r *request) reset() *request {
 	r.body = nil
 	r.bodyEncoder = ""
 	r.bodyType = ""
+	r.bodyFormData = nil
 	return r
+}
+
+// WithFormDataField adds a form data for uploading to the current request.
+// If the given form value is nil, delete the corresponding form key.
+func (r *request) WithFormDataField(key string, value interface{}) Request {
+	if value == nil {
+		return r.withFormData(key, nil)
+	}
+	return r.withFormData(key, &formDataValue{field: toString(value)})
+}
+
+// WithFormDataFile adds a file target for uploading to the current request.
+// If the given form value is nil, delete the corresponding form key.
+// This method supports adding string paths, opened file descriptors and
+// downstream uploaded files as upload targets.
+func (r *request) WithFormDataFile(key string, value interface{}) Request {
+	if value == nil {
+		return r.withFormData(key, nil)
+	}
+	return r.withFormData(key, &formDataValue{file: value})
+}
+
+// The withFormData method adds an upload form data to the current request.
+func (r *request) withFormData(key string, value *formDataValue) *request {
+	if value == nil {
+		if len(r.bodyFormData) > 0 {
+			delete(r.bodyFormData, key)
+		}
+		return r
+	}
+	if r.bodyFormData == nil {
+		r.bodyFormData = make(map[string][]*formDataValue)
+	}
+	r.bodyFormData[key] = append(r.bodyFormData[key], value)
+	return r
+}
+
+// Upload sends the current upload request and receives the response.
+// This method will send the request using the POST method.
+func (r *request) Upload() (Response, error) {
+	return r.UploadBy(http.MethodPost)
+}
+
+// UploadBy sends the current upload request and receives the response.
+// This method will send the request using the given request method.
+// This method only supports POST method and PUT method.
+func (r *request) UploadBy(method string) (Response, error) {
+	if r.uri == "" {
+		return nil, ErrEmptyRequestURL
+	}
+
+	method = strings.ToUpper(method)
+	if method != http.MethodPost && method != http.MethodPut {
+		return nil, fmt.Errorf("unsupported upload method: %s", method)
+	}
+	if len(r.bodyFormData) == 0 {
+		return nil, ErrEmptyUploadBody
+	}
+
+	b := new(bytes.Buffer)
+	w := multipart.NewWriter(b)
+	defer func() { _ = w.Close() }()
+
+	keys := make([]string, 0, len(r.bodyFormData))
+	for key := range r.bodyFormData {
+		keys = append(keys, key)
+	}
+	if len(keys) > 1 {
+		sort.Strings(keys)
+	}
+
+	for _, key := range keys {
+		for _, item := range r.bodyFormData[key] {
+			if item.file == nil {
+				// This is normal form data.
+				if err := w.WriteField(key, item.field); err != nil {
+					return nil, err
+				}
+				continue
+			}
+
+			switch v := item.file.(type) {
+			case string:
+				info, err := os.Stat(v)
+				if err != nil {
+					return nil, err
+				}
+				// Here our task string is a local regular file.
+				if !info.Mode().IsRegular() {
+					return nil, fmt.Errorf("upload target file %s is not a regular file", v)
+				}
+				if err := copyFileContentToFormWriter(key, v, w); err != nil {
+					return nil, err
+				}
+			case *os.File:
+				info, err := v.Stat()
+				if err != nil {
+					return nil, err
+				}
+				// Here our task string is a local regular file.
+				if !info.Mode().IsRegular() {
+					return nil, fmt.Errorf("upload target file %s is not a regular file", v.Name())
+				}
+				fw, err := w.CreateFormFile(key, filepath.Base(v.Name()))
+				if err != nil {
+					return nil, err
+				}
+				// Here we cannot determine the offset in the file pointed to by the file descriptor,
+				// we only read all the file content as upload content.
+				// After we finish reading, we do not return the original position of the cursor and
+				// close the file descriptor, because we are not sure whether this file is used elsewhere.
+				if _, err := io.Copy(fw, v); err != nil {
+					return nil, err
+				}
+			case *multipart.FileHeader:
+				// For interim uploads, we read data directly from downstream uploaded files.
+				if err := copyUploadFileContentToFormWriter(key, v, w); err != nil {
+					return nil, err
+				}
+			default:
+				return nil, ErrInvalidUploadBody
+			}
+		}
+	}
+
+	r.body = b
+	r.bodyEncoder = ""
+	r.bodyType = w.FormDataContentType()
+
+	if o, err := r.send(method); err != nil {
+		return nil, err
+	} else {
+		return NewResponse(o, false)
+	}
+}
+
+// The copyFileContentToFormWriter function writes the contents of a given file to the current upload data.
+func copyFileContentToFormWriter(key, p string, w *multipart.Writer) error {
+	fd, err := os.Open(p)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = fd.Close() }()
+
+	fw, err := w.CreateFormFile(key, filepath.Base(fd.Name()))
+	if err != nil {
+		return err
+	}
+	_, err = io.Copy(fw, fd)
+	return err
+}
+
+// The copyUploadFileContentToFormWriter function writes the downstream uploaded file to the current upload data.
+func copyUploadFileContentToFormWriter(key string, p *multipart.FileHeader, w *multipart.Writer) error {
+	f, err := p.Open()
+	if err != nil {
+		return err
+	}
+	defer func() { _ = f.Close() }()
+
+	fw, err := w.CreateFormFile(key, filepath.Base(p.Filename))
+	if err != nil {
+		return err
+	}
+	_, err = io.Copy(fw, f)
+	return err
 }
 
 // The toString function converts the given parameter to a string.

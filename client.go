@@ -81,6 +81,13 @@ type Client interface {
 	// This method will send the request using the POST method.
 	// This method encodes the request body as form data (urlencoded) and sends it.
 	PostForm(string, url.Values) (Response, error)
+
+	// UploadFile uploads a file with the given parameters and returns the Response.
+	// This method will send the request using the POST method.
+	// This method encodes the request body as form data and sends it.
+	// This method supports using string paths, opened file descriptors and downstream
+	// uploaded files as upload targets.
+	UploadFile(string, string, interface{}) (Response, error)
 }
 
 // The New function creates and returns a new built-in Client instance.
@@ -204,5 +211,16 @@ func (c *client) PostXML(uri string, body interface{}) (Response, error) {
 func (c *client) PostForm(uri string, body url.Values) (Response, error) {
 	return c.Do(uri, func(r Request) (Response, error) {
 		return r.WithFormBody(body).Post()
+	})
+}
+
+// UploadFile uploads a file with the given parameters and returns the Response.
+// This method will send the request using the POST method.
+// This method encodes the request body as form data and sends it.
+// This method supports using string paths, opened file descriptors and downstream
+// uploaded files as upload targets.
+func (c *client) UploadFile(uri, formName string, target interface{}) (Response, error) {
+	return c.Do(uri, func(r Request) (Response, error) {
+		return r.WithFormDataFile(formName, target).Upload()
 	})
 }
