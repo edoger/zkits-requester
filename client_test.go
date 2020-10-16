@@ -15,10 +15,14 @@
 package requester
 
 import (
+	"crypto/md5"
+	"encoding/hex"
 	"io"
+	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"testing"
 	"time"
 )
@@ -195,5 +199,81 @@ func TestClient(t *testing.T) {
 		}
 	} else {
 		t.Fatalf("Client.PostForm() error: %s", err)
+	}
+}
+
+func TestClient_UploadFile(t *testing.T) {
+	var wantMD5, gotMD5 string
+	if data, err := ioutil.ReadFile("test/test.pdf"); err != nil {
+		t.Fatal(err)
+	} else {
+		a := md5.Sum(data)
+		wantMD5 = hex.EncodeToString(a[:])
+	}
+
+	reset := func() { gotMD5 = "" }
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		f, _, err := r.FormFile("upload")
+		if err != nil {
+			t.Log(err)
+			return
+		}
+		if data, err := ioutil.ReadAll(f); err != nil {
+			t.Log(err)
+		} else {
+			a := md5.Sum(data)
+			gotMD5 = hex.EncodeToString(a[:])
+		}
+	}))
+	defer server.Close()
+
+	c := New()
+
+	if _, err := c.UploadFile(server.URL, "upload", "test/test.pdf"); err != nil {
+		t.Fatalf("[1] Client.UploadFile() error: %s", err)
+	} else {
+		if wantMD5 != gotMD5 {
+			t.Fatalf("[1] Client.UploadFile(): [%s != %s]", wantMD5, gotMD5)
+		}
+	}
+
+	reset()
+	fd, err := os.Open("test/test.pdf")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = fd.Close() }()
+	if _, err := c.UploadFile(server.URL, "upload", fd); err != nil {
+		t.Fatalf("[2] Client.UploadFile() error: %s", err)
+	} else {
+		if wantMD5 != gotMD5 {
+			t.Fatalf("[2] Client.UploadFile(): [%s != %s]", wantMD5, gotMD5)
+		}
+	}
+
+	// Transfer upload server.
+	transferServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := r.ParseMultipartForm(32 << 20); err != nil {
+			t.Log(err)
+			return
+		}
+		if r.MultipartForm == nil || r.MultipartForm.File == nil || len(r.MultipartForm.File["transfer"]) == 0 {
+			return
+		}
+		if _, err := c.UploadFile(server.URL, "upload", r.MultipartForm.File["transfer"][0]); err != nil {
+			t.Log(err)
+			return
+		}
+	}))
+	defer transferServer.Close()
+
+	reset()
+	if _, err := c.UploadFile(transferServer.URL, "transfer", "test/test.pdf"); err != nil {
+		t.Fatalf("[3] Client.UploadFile() error: %s", err)
+	} else {
+		if wantMD5 != gotMD5 {
+			t.Fatalf("[3] Client.UploadFile(): [%s != %s]", wantMD5, gotMD5)
+		}
 	}
 }
