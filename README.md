@@ -30,26 +30,51 @@ This library provides an efficient and easy-to-use HTTP client.
     
     func main() {
        client := requester.Default()
+       // client.Get("https://test.com", nil)
        res, err := client.New("https://test.com").Get()
        if err != nil {
            panic(err)
        }
        fmt.Println(res.String())
        
-       // Send parameters.
+       data := map[string]interface{}{"key": "value"}
+       // client.PostJSON("https://test.com", data)
        res, err = client.New("https://test.com").
-           WithQuery("foo", "foo").
-           WithJSONBody(map[string]interface{}{
-               "key": "value",
-           }).Post()
+           WithJSONBody(data).
+           Post()
        if err != nil {
            panic(err)
        }
        
        var obj interface{}
+       // Bind response json to object.
        if err = res.JSON(&obj); err != nil {
-           // Handle error.
+           panic(err)
        }
+    }
+    ```
+
+ 3. Upload file.
+
+    ```go
+    package main
+    
+    import (
+       "fmt"
+    
+       "github.com/edoger/zkits-requester"
+    )
+    
+    func main() {
+       client := requester.Default()
+       // client.UploadFile("https://test.com", "upload", "path/to/file")
+       res, err := client.New("https://test.com").
+           WithFormDataFile("upload", "path/to/file").
+           Upload()
+       if err != nil {
+           panic(err)
+       }
+       fmt.Println(res.String())
     }
     ```
 
