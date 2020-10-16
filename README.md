@@ -17,7 +17,7 @@ This library provides an efficient and easy-to-use HTTP client.
     go get -u -v github.com/edoger/zkits-requester
     ```
 
- 2. Create a runner to run subtasks within the application.
+ 2. Create a client to send some requests.
 
     ```go
     package main
