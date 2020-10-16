@@ -16,6 +16,8 @@ package requester
 
 import (
 	"context"
+	"crypto/md5"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -23,6 +25,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -315,5 +318,184 @@ func TestToString(t *testing.T) {
 		if got := toString(item.Give); got != item.Want {
 			t.Fatalf("ToString() [%d] want %q got %q", i, item.Want, got)
 		}
+	}
+}
+
+func TestUpload(t *testing.T) {
+	var wantFileMD5, gotFileMD5 string
+	if data, err := ioutil.ReadFile("test/test.pdf"); err != nil {
+		t.Fatal(err)
+	} else {
+		a := md5.Sum(data)
+		wantFileMD5 = hex.EncodeToString(a[:])
+	}
+
+	c := New()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if f, _, err := r.FormFile("upload"); err != nil {
+			t.Log(err)
+		} else {
+			if data, err := ioutil.ReadAll(f); err != nil {
+				t.Log(err)
+			} else {
+				a := md5.Sum(data)
+				gotFileMD5 = hex.EncodeToString(a[:])
+			}
+		}
+	}))
+	defer server.Close()
+
+	var gotFormField string
+	transferA := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := r.ParseMultipartForm(32 << 20); err != nil {
+			t.Log(err)
+			return
+		}
+		if r.MultipartForm == nil {
+			t.Log("Got nil MultipartForm")
+			return
+		}
+		var upload bool
+		if r.MultipartForm.Value != nil {
+			gotFormField = strings.Join(r.MultipartForm.Value["field"], "-")
+			upload = strings.Join(r.MultipartForm.Value["upload"], "-") == "foo-bar"
+		}
+		if upload && r.MultipartForm.File != nil && len(r.MultipartForm.File["transfer"]) > 0 {
+			_, _ = c.Do(server.URL, func(req Request) (Response, error) {
+				req.WithFormDataFile("upload", r.MultipartForm.File["transfer"][0])
+				if _, err := req.Upload(); err != nil {
+					t.Fatalf("Request.Upload() error: %s", err)
+				}
+				return nil, nil
+			})
+		}
+	}))
+	defer transferA.Close()
+
+	transferB := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if f, h, err := r.FormFile("transfer"); err != nil {
+			t.Log(err)
+		} else {
+			_, _ = c.Do(server.URL, func(req Request) (Response, error) {
+				if req.WithFormDataFileFromReader("upload", h.Filename, f) == nil {
+					t.Fatal("Request.WithFormDataFileFromReader() return nil")
+				}
+				if _, err := req.Upload(); err != nil {
+					t.Fatalf("Request.Upload() error: %s", err)
+				}
+				return nil, nil
+			})
+		}
+	}))
+	defer transferB.Close()
+
+	reset := func() {
+		gotFileMD5 = ""
+		gotFormField = ""
+	}
+
+	_, _ = c.Do(transferA.URL, func(req Request) (Response, error) {
+		defer reset()
+
+		if req.WithFormDataField("field", "test") == nil {
+			t.Fatal("Request.WithFormDataField() return nil")
+		}
+		if req.WithFormDataFile("transfer", "test/test.pdf") == nil {
+			t.Fatal("Request.WithFormDataFile() return nil")
+		}
+
+		req.WithFormDataField("field", "test")
+		req.WithFormDataField("upload", "foo")
+		req.WithFormDataField("upload", "bar")
+		if _, err := req.Upload(); err != nil {
+			t.Fatalf("Request.Upload() error: %s", err)
+		}
+
+		if gotFormField != "test-test" {
+			t.Fatalf("Request.Upload() got field: %s", gotFormField)
+		}
+		if wantFileMD5 != gotFileMD5 {
+			t.Fatalf("Client.Upload(): [%s != %s]", wantFileMD5, gotFileMD5)
+		}
+		return nil, nil
+	})
+
+	_, _ = c.Do(transferB.URL, func(req Request) (Response, error) {
+		defer reset()
+
+		req.WithFormDataFile("transfer", "test/test.pdf")
+		if _, err := req.Upload(); err != nil {
+			t.Fatalf("Request.Upload() error: %s", err)
+		}
+		if wantFileMD5 != gotFileMD5 {
+			t.Fatalf("Client.Upload(): [%s != %s]", wantFileMD5, gotFileMD5)
+		}
+		return nil, nil
+	})
+
+	_, _ = c.Do(server.URL, func(req Request) (Response, error) {
+		defer reset()
+
+		req.WithFormDataField("field", "test")
+		req.WithFormDataFile("file", "test/test.pdf")
+		req.WithFormDataFileFromReader("reader", "test.pdf", strings.NewReader("test"))
+
+		req.WithFormDataField("field", nil)
+		req.WithFormDataFile("file", nil)
+		req.WithFormDataFileFromReader("reader", "test.pdf", nil)
+
+		if _, err := req.Upload(); err == nil {
+			t.Fatal("Request.Upload() return nil error")
+		} else {
+			if err != ErrEmptyUploadBody {
+				t.Fatalf("Request.Upload() unexpected error: %s", err)
+			}
+		}
+		return nil, nil
+	})
+
+	if _, err := c.New("").Upload(); err == nil {
+		t.Fatal("Request.Upload() return nil error")
+	} else {
+		if err != ErrEmptyRequestURL {
+			t.Fatalf("Request.Upload() unexpected error: %s", err)
+		}
+	}
+
+	if _, err := c.New(server.URL).UploadBy(http.MethodGet); err == nil {
+		t.Fatal("Request.UploadBy() return nil error")
+	}
+
+	if _, err := c.New(server.URL).WithFormDataFile("file", 100).Upload(); err == nil {
+		t.Fatal("Request.Upload() return nil error")
+	} else {
+		if err != ErrInvalidUploadBody {
+			t.Fatalf("Request.Upload() unexpected error: %s", err)
+		}
+	}
+
+	if _, err := c.New(server.URL).WithFormDataFile("file", "test/").Upload(); err == nil {
+		t.Fatal("Request.Upload() return nil error")
+	}
+
+	if f, err := os.Open("test/"); err != nil {
+		t.Fatal(err)
+	} else {
+		if _, err := c.New(server.URL).WithFormDataFile("file", f).Upload(); err == nil {
+			t.Fatal("Request.Upload() return nil error")
+		}
+	}
+
+	if _, err := c.New(server.URL).WithFormDataFile("file", "test/not-exist.file").Upload(); err == nil {
+		t.Fatal("Request.Upload() return nil error")
+	}
+
+	if _, err := c.New("::////").WithFormDataField("foo", "foo").Upload(); err == nil {
+		t.Fatal("Request.Upload() return nil error")
+	}
+
+	if _, err := c.New(server.URL).WithFormDataFileFromReader("f", "f", testErrorReadCloser("err")).Upload(); err == nil {
+		t.Fatal("Request.Upload() return nil error")
 	}
 }
