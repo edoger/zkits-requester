@@ -108,3 +108,75 @@ func TestResponse_XML(t *testing.T) {
 		t.Fatalf("Response.XML() got: %s", got)
 	}
 }
+
+func TestNewResponseFrom(t *testing.T) {
+	var r Response
+	r = NewResponseFrom([]byte("foo"), nil, http.StatusOK)
+	if r == nil {
+		t.Fatal("NewResponseFrom(): return nil")
+	}
+	if s := r.String(); s != "foo" {
+		t.Fatalf("NewResponseFrom(): %s", s)
+	}
+	if r.Headers() == nil {
+		t.Fatal("NewResponseFrom(): nil headers")
+	}
+	if n := r.StatusCode(); n != http.StatusOK {
+		t.Fatalf("NewResponseFrom(): %d", n)
+	}
+	if s := r.Status(); s != http.StatusText(http.StatusOK) {
+		t.Fatalf("NewResponseFrom(): %s", s)
+	}
+
+	r = NewResponseFrom([]byte("foo"), nil, http.StatusOK, "Test")
+	if s := r.Status(); s != "Test" {
+		t.Fatalf("NewResponseFrom(): %s", s)
+	}
+}
+
+func TestNewResponseFromPanic(t *testing.T) {
+	defer func() {
+		if recover() == nil {
+			t.Fatal("NewResponseFrom(): no panic")
+		}
+	}()
+
+	NewResponseFrom([]byte("foo"), nil, http.StatusOK, "Foo", "Bar")
+}
+
+func TestNewEmptyResponse(t *testing.T) {
+	r := NewEmptyResponse()
+	if r == nil {
+		t.Fatal("NewEmptyResponse(): return nil")
+	}
+}
+
+func TestEmptyResponse(t *testing.T) {
+	r := NewEmptyResponse()
+	if got := r.Status(); got != "" {
+		t.Fatalf("NewEmptyResponse().Status(): %s", got)
+	}
+	if got := r.StatusCode(); got != 0 {
+		t.Fatalf("NewEmptyResponse().StatusCode(): %d", got)
+	}
+	if got := r.Headers(); got == nil || len(got) != 0 {
+		t.Fatalf("NewEmptyResponse().Headers(): %v", got)
+	}
+	if got := r.String(); got != "" {
+		t.Fatalf("NewEmptyResponse().String(): %s", got)
+	}
+	if got := r.Body(); got != nil {
+		t.Fatalf("NewEmptyResponse().String(): %s", string(got))
+	}
+	if got := r.Len(); got != 0 {
+		t.Fatalf("NewEmptyResponse().Len(): %d", got)
+	}
+
+	var obj struct{}
+	if r.JSON(&obj) == nil {
+		t.Fatal("NewEmptyResponse().JSON(): nil error")
+	}
+	if r.XML(&obj) == nil {
+		t.Fatal("NewEmptyResponse().XML(): nil error")
+	}
+}
