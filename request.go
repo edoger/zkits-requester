@@ -353,15 +353,19 @@ func (r *request) SendBy(method string) (Response, error) {
 		return nil, err
 	} else {
 		// For HEAD requests, we ignore the response body.
-		noBody := o.Request.Method == http.MethodHead
-		if r.responder != nil {
-			return r.responder(o, noBody)
-		}
-		if r.client.responder != nil {
-			return r.client.responder(o, noBody)
-		}
-		return NewResponse(o, noBody)
+		return r.fromResponder(o, o.Request.Method == http.MethodHead)
 	}
+}
+
+// Build the Response instance from the responder.
+func (r *request) fromResponder(o *http.Response, noBody bool) (Response, error) {
+	if r.responder != nil {
+		return r.responder(o, noBody)
+	}
+	if r.client.responder != nil {
+		return r.client.responder(o, noBody)
+	}
+	return NewResponse(o, noBody)
 }
 
 // The send method sends the current request and returns the received response.
@@ -640,13 +644,7 @@ func (r *request) UploadBy(method string) (Response, error) {
 	if o, err := r.send(method); err != nil {
 		return nil, err
 	} else {
-		if r.responder != nil {
-			return r.responder(o, false)
-		}
-		if r.client.responder != nil {
-			return r.client.responder(o, false)
-		}
-		return NewResponse(o, false)
+		return r.fromResponder(o, false)
 	}
 }
 
