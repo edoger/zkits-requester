@@ -47,6 +47,9 @@ type Client interface {
 	// If nil is given, all common request headers will be deleted.
 	SetCommonHeaders(http.Header) Client
 
+	// SetResponder sets the given responder to the current client.
+	SetResponder(Responder) Client
+
 	// New returns a new request instance from the given uri.
 	New(string) Request
 
@@ -97,9 +100,10 @@ func New() Client {
 
 // The client type is a built-in implementation of the Client interface.
 type client struct {
-	http    *http.Client
-	timeout time.Duration
-	headers http.Header
+	http      *http.Client
+	timeout   time.Duration
+	headers   http.Header
+	responder Responder
 }
 
 // SetHTTPClient sets a private HTTP client instance for the current client.
@@ -144,6 +148,12 @@ func (c *client) SetCommonHeaders(headers http.Header) Client {
 	} else {
 		c.headers = headers.Clone()
 	}
+	return c
+}
+
+// SetResponder sets the given responder to the current client.
+func (c *client) SetResponder(responder Responder) Client {
+	c.responder = responder
 	return c
 }
 

@@ -58,6 +58,9 @@ type Request interface {
 	// WithMethod adds the default request method of the current request.
 	WithMethod(string) Request
 
+	// WithResponder adds the given responder to the current request.
+	WithResponder(Responder) Request
+
 	// WithHeader adds a request header to the current request.
 	// If the given request header value is an empty string, the corresponding request
 	// header will be deleted.
@@ -174,6 +177,7 @@ type request struct {
 	ctx          context.Context
 	query        url.Values
 	timeout      time.Duration
+	responder    Responder
 	body         interface{}
 	bodyFormData map[string][]*formDataValue
 	bodyEncoder  string
@@ -189,6 +193,12 @@ type formDataValue struct {
 // WithMethod adds the default request method of the current request.
 func (r *request) WithMethod(method string) Request {
 	r.method = method
+	return r
+}
+
+// WithResponder adds the given responder to the current request.
+func (r *request) WithResponder(responder Responder) Request {
+	r.responder = responder
 	return r
 }
 
@@ -343,7 +353,14 @@ func (r *request) SendBy(method string) (Response, error) {
 		return nil, err
 	} else {
 		// For HEAD requests, we ignore the response body.
-		return NewResponse(o, o.Request.Method == http.MethodHead)
+		noBody := o.Request.Method == http.MethodHead
+		if r.responder != nil {
+			return r.responder(o, noBody)
+		}
+		if r.client.responder != nil {
+			return r.client.responder(o, noBody)
+		}
+		return NewResponse(o, noBody)
 	}
 }
 
@@ -623,6 +640,12 @@ func (r *request) UploadBy(method string) (Response, error) {
 	if o, err := r.send(method); err != nil {
 		return nil, err
 	} else {
+		if r.responder != nil {
+			return r.responder(o, false)
+		}
+		if r.client.responder != nil {
+			return r.client.responder(o, false)
+		}
 		return NewResponse(o, false)
 	}
 }
