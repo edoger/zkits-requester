@@ -98,6 +98,9 @@ func TestRequest(t *testing.T) {
 		if req.WithMethod("") == nil {
 			t.Fatal("Request.WithMethod() return nil")
 		}
+		if req.WithResponder(NewResponse) == nil {
+			t.Fatal("Request.WithResponder() return nil")
+		}
 
 		if req.WithHeader("X-Foo", "test") == nil {
 			t.Fatal("Request.WithHeader() return nil")
@@ -498,4 +501,43 @@ func TestUpload(t *testing.T) {
 	if _, err := c.New(server.URL).WithFormDataFileFromReader("f", "f", testErrorReadCloser("err")).Upload(); err == nil {
 		t.Fatal("Request.Upload() return nil error")
 	}
+}
+
+func TestRequestResponder(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	makeResponder := func(data string) Responder {
+		return func(r *http.Response, noBody bool) (Response, error) {
+			defer func() { _ = r.Body.Close() }()
+			return NewResponseFrom([]byte(data), nil, http.StatusOK), nil
+		}
+	}
+
+	c := New()
+	c.SetResponder(makeResponder("foo"))
+	_, _ = c.Do(server.URL, func(r Request) (Response, error) {
+		res, err := r.Get()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := res.String(); got != "foo" {
+			t.Fatal(got)
+		}
+		return nil, nil
+	})
+
+	_, _ = c.Do(server.URL, func(r Request) (Response, error) {
+		r.WithResponder(makeResponder("bar"))
+		res, err := r.Get()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := res.String(); got != "bar" {
+			t.Fatal(got)
+		}
+		return nil, nil
+	})
 }
