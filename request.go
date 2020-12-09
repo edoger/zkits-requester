@@ -660,6 +660,7 @@ func (r *request) Clear() Request {
 	r.body = nil
 	r.bodyEncoder = ""
 	r.bodyType = ""
+	r.responder = nil
 
 	return r.ClearFormData()
 }
