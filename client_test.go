@@ -89,6 +89,16 @@ func TestClient_SetCommonHeaders(t *testing.T) {
 	}
 }
 
+func TestClient_SetResponder(t *testing.T) {
+	c := New()
+	if c.SetResponder(NewResponse) == nil {
+		t.Fatal("Client.SetResponder() return nil")
+	}
+	if c.SetResponder(nil) == nil {
+		t.Fatal("Client.SetResponder(nil) return nil")
+	}
+}
+
 func TestClient_New(t *testing.T) {
 	c := New()
 	if c.New("http://test.com/foo") == nil {
