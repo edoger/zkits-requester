@@ -19,7 +19,6 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
-	"io"
 	"io/ioutil"
 	"net/http"
 )
@@ -71,7 +70,6 @@ func NewResponse(o *http.Response, noBody bool) (Response, error) {
 		headers: o.Header.Clone(),
 	}
 	if noBody {
-		_, _ = io.Copy(ioutil.Discard, o.Body)
 		return res, nil
 	}
 	if body, err := ioutil.ReadAll(o.Body); err != nil {
