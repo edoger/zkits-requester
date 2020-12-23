@@ -28,6 +28,7 @@ func DefaultHTTPClient() *http.Client {
 
 // NewDefaultHTTPClient returns a new default HTTP client instance.
 func NewDefaultHTTPClient() *http.Client {
+	// Clone is available in go 1.14 or later.
 	t := http.DefaultTransport.(*http.Transport).Clone()
 	// Default http.Transport.MaxIdleConnsPerHost is 2.
 	t.MaxIdleConnsPerHost = 10
