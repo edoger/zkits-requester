@@ -370,22 +370,18 @@ func (r *request) fromResponder(o *http.Response, noBody bool) (Response, error)
 
 // The send method sends the current request and returns the received response.
 func (r *request) send(method string) (*http.Response, error) {
-	ctx := r.ctx
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	if r.timeout > 0 {
-		ctx, _ = context.WithTimeout(ctx, r.timeout)
-	} else {
-		if r.client.timeout > 0 {
-			ctx, _ = context.WithTimeout(ctx, r.client.timeout)
-		}
-	}
-
 	body, err := r.makeBodyReader()
 	if err != nil {
 		return nil, err
 	}
+
+	ctx, cancel := r.getContext()
+	if cancel != nil {
+		// The context must be explicitly cancelled after the end of the request,
+		// so that the resources of this request can be released quickly.
+		defer cancel()
+	}
+
 	req, err := http.NewRequestWithContext(ctx, method, r.uri, body)
 	if err != nil {
 		return nil, err
@@ -427,6 +423,21 @@ func (r *request) send(method string) (*http.Response, error) {
 	} else {
 		return r.client.http.Do(req)
 	}
+}
+
+// Gets the request context.
+func (r *request) getContext() (context.Context, context.CancelFunc) {
+	ctx := r.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if r.timeout > 0 {
+		return context.WithTimeout(ctx, r.timeout)
+	}
+	if r.client.timeout > 0 {
+		return context.WithTimeout(ctx, r.client.timeout)
+	}
+	return ctx, nil
 }
 
 // The makeBodyReader method returns the current request body as a io.Reader.
