@@ -580,60 +580,42 @@ func (r *request) UploadBy(method string) (Response, error) {
 		sort.Strings(keys)
 	}
 
-	for _, key := range keys {
-		for _, item := range r.bodyFormData[key] {
-			if item.file == nil {
+	for i, j := 0, len(keys); i < j; i++ {
+		for m, n := 0, len(r.bodyFormData[keys[i]]); m < n; m++ {
+			if r.bodyFormData[keys[i]][m].file == nil {
 				// This is normal form data.
-				if err := w.WriteField(key, item.field); err != nil {
+				if err := w.WriteField(keys[i], r.bodyFormData[keys[i]][m].field); err != nil {
 					return nil, err
 				}
 				continue
 			}
 
-			switch v := item.file.(type) {
+			switch v := r.bodyFormData[keys[i]][m].file.(type) {
 			case string:
-				info, err := os.Stat(v)
-				if err != nil {
+				if err := shouldBeRegularFile(os.Stat(v)); err != nil {
 					return nil, err
 				}
-				// Here our task string is a local regular file.
-				if !info.Mode().IsRegular() {
-					return nil, fmt.Errorf("upload target file %s is not a regular file", v)
-				}
-				if err := copyFileContentToFormWriter(key, v, w); err != nil {
+				if err := writeFormDataFromFilePath(keys[i], v, w); err != nil {
 					return nil, err
 				}
 			case *os.File:
-				info, err := v.Stat()
-				if err != nil {
-					return nil, err
-				}
-				// Here our task string is a local regular file.
-				if !info.Mode().IsRegular() {
-					return nil, fmt.Errorf("upload target file %s is not a regular file", v.Name())
-				}
-				fw, err := w.CreateFormFile(key, filepath.Base(v.Name()))
-				if err != nil {
+				if err := shouldBeRegularFile(v.Stat()); err != nil {
 					return nil, err
 				}
 				// Here we cannot determine the offset in the file pointed to by the file descriptor,
 				// we only read all the file content as upload content.
 				// After we finish reading, we do not return the original position of the cursor and
 				// close the file descriptor, because we are not sure whether this file is used elsewhere.
-				if _, err := io.Copy(fw, v); err != nil {
+				if err := writeFormDataFromReader(keys[i], filepath.Base(v.Name()), w, v); err != nil {
 					return nil, err
 				}
 			case *multipart.FileHeader:
 				// For interim uploads, we read data directly from downstream uploaded files.
-				if err := copyUploadFileContentToFormWriter(key, v, w); err != nil {
+				if err := writeFormDataFromFileHeader(keys[i], v, w); err != nil {
 					return nil, err
 				}
 			case *formDataFileReader:
-				fw, err := w.CreateFormFile(key, filepath.Base(v.name))
-				if err != nil {
-					return nil, err
-				}
-				if _, err = io.Copy(fw, v.reader); err != nil {
+				if err := writeFormDataFromReader(keys[i], filepath.Base(v.name), w, v.reader); err != nil {
 					return nil, err
 				}
 			default:
@@ -685,39 +667,57 @@ func (r *request) reset() *request {
 	return r
 }
 
-// The copyFileContentToFormWriter function writes the contents of a given file to the current upload data.
-func copyFileContentToFormWriter(key, p string, w *multipart.Writer) error {
-	fd, err := os.Open(p)
+// Determines whether the given target is a regular file.
+func shouldBeRegularFile(info os.FileInfo, err error) error {
 	if err != nil {
 		return err
 	}
-	defer func() { _ = fd.Close() }()
+	if !info.Mode().IsRegular() {
+		return fmt.Errorf("target %s is not a regular file", info.Name())
+	}
+	return nil
+}
 
-	fw, err := w.CreateFormFile(key, filepath.Base(fd.Name()))
+// Writes the contents of a given io.Reader to upload writer.
+func writeFormDataFromReader(key, name string, w *multipart.Writer, src io.Reader) error {
+	fw, err := w.CreateFormFile(key, name)
 	if err != nil {
 		return err
 	}
-	_, err = io.Copy(fw, fd)
+	// Do we need to disallow uploading empty target?
+	// Of course, it's allowed now!
+	_, err = io.Copy(fw, src)
 	return err
 }
 
-// The copyUploadFileContentToFormWriter function writes the downstream uploaded file to the current upload data.
-func copyUploadFileContentToFormWriter(key string, p *multipart.FileHeader, w *multipart.Writer) error {
+// Writes the contents of a given file to upload writer.
+func writeFormDataFromFilePath(key, p string, w *multipart.Writer) error {
+	f, err := os.Open(p)
+	if err != nil {
+		return err
+	}
+	defer forceClose(f)
+
+	return writeFormDataFromReader(key, filepath.Base(f.Name()), w, f)
+}
+
+// Writes the downstream uploaded file to upload writer.
+func writeFormDataFromFileHeader(key string, p *multipart.FileHeader, w *multipart.Writer) error {
 	f, err := p.Open()
 	if err != nil {
 		return err
 	}
-	defer func() { _ = f.Close() }()
+	defer forceClose(f)
 
-	fw, err := w.CreateFormFile(key, filepath.Base(p.Filename))
-	if err != nil {
-		return err
-	}
-	_, err = io.Copy(fw, f)
-	return err
+	return writeFormDataFromReader(key, filepath.Base(p.Filename), w, f)
 }
 
-// The toString function converts the given parameter to a string.
+// Force close the given io.Closer ignore error.
+func forceClose(c io.Closer) {
+	_ = c.Close()
+}
+
+// Converts the given parameter to a string.
 func toString(value interface{}) string {
 	if value == nil {
 		return ""
