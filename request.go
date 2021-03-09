@@ -28,9 +28,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"reflect"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
 
@@ -252,7 +250,7 @@ func (r *request) WithQuery(key, value string) Request {
 // WithQueryValue adds a query parameter to the current request.
 // This method will automatically convert the given parameter value to a string.
 func (r *request) WithQueryValue(key string, value interface{}) Request {
-	return r.WithQuery(key, toString(value))
+	return r.WithQuery(key, internal.ToString(value))
 }
 
 // WithQueries adds and replaces some query parameters to the current request.
@@ -494,7 +492,7 @@ func (r *request) WithFormDataField(key string, value interface{}) Request {
 	if value == nil {
 		return r.withFormData(key, nil)
 	}
-	return r.withFormData(key, &formDataValue{field: toString(value)})
+	return r.withFormData(key, &formDataValue{field: internal.ToString(value)})
 }
 
 // WithFormDataFile adds a file target for uploading to the current request.
@@ -594,30 +592,30 @@ func (r *request) UploadBy(method string) (Response, error) {
 
 			switch v := r.bodyFormData[keys[i]][m].file.(type) {
 			case string:
-				if err := shouldBeRegularFile(os.Stat(v)); err != nil {
+				if err := internal.ShouldBeRegularFile(os.Stat(v)); err != nil {
 					return nil, err
 				}
-				if err := writeFormDataFromFilePath(keys[i], v, w); err != nil {
+				if err := internal.WriteFormDataFromFilePath(keys[i], v, w); err != nil {
 					return nil, err
 				}
 			case *os.File:
-				if err := shouldBeRegularFile(v.Stat()); err != nil {
+				if err := internal.ShouldBeRegularFile(v.Stat()); err != nil {
 					return nil, err
 				}
 				// Here we cannot determine the offset in the file pointed to by the file descriptor,
 				// we only read all the file content as upload content.
 				// After we finish reading, we do not return the original position of the cursor and
 				// close the file descriptor, because we are not sure whether this file is used elsewhere.
-				if err := writeFormDataFromReader(keys[i], filepath.Base(v.Name()), w, v); err != nil {
+				if err := internal.WriteFormDataFromReader(keys[i], filepath.Base(v.Name()), w, v); err != nil {
 					return nil, err
 				}
 			case *multipart.FileHeader:
 				// For interim uploads, we read data directly from downstream uploaded files.
-				if err := writeFormDataFromFileHeader(keys[i], v, w); err != nil {
+				if err := internal.WriteFormDataFromFileHeader(keys[i], v, w); err != nil {
 					return nil, err
 				}
 			case *formDataFileReader:
-				if err := writeFormDataFromReader(keys[i], filepath.Base(v.name), w, v.reader); err != nil {
+				if err := internal.WriteFormDataFromReader(keys[i], filepath.Base(v.name), w, v.reader); err != nil {
 					return nil, err
 				}
 			default:
@@ -667,93 +665,4 @@ func (r *request) reset() *request {
 	r.uri = ""
 
 	return r
-}
-
-// Determines whether the given target is a regular file.
-func shouldBeRegularFile(info os.FileInfo, err error) error {
-	if err != nil {
-		return err
-	}
-	if !info.Mode().IsRegular() {
-		return fmt.Errorf("target %s is not a regular file", info.Name())
-	}
-	return nil
-}
-
-// Writes the contents of a given io.Reader to upload writer.
-func writeFormDataFromReader(key, name string, w *multipart.Writer, src io.Reader) error {
-	fw, err := w.CreateFormFile(key, name)
-	if err != nil {
-		return err
-	}
-	// Do we need to disallow uploading empty target?
-	// Of course, it's allowed now!
-	_, err = io.Copy(fw, src)
-	return err
-}
-
-// Writes the contents of a given file to upload writer.
-func writeFormDataFromFilePath(key, p string, w *multipart.Writer) error {
-	f, err := os.Open(p)
-	if err != nil {
-		return err
-	}
-	defer forceClose(f)
-
-	return writeFormDataFromReader(key, filepath.Base(f.Name()), w, f)
-}
-
-// Writes the downstream uploaded file to upload writer.
-func writeFormDataFromFileHeader(key string, p *multipart.FileHeader, w *multipart.Writer) error {
-	f, err := p.Open()
-	if err != nil {
-		return err
-	}
-	defer forceClose(f)
-
-	return writeFormDataFromReader(key, filepath.Base(p.Filename), w, f)
-}
-
-// Force close the given io.Closer ignore error.
-func forceClose(c io.Closer) {
-	_ = c.Close()
-}
-
-// Converts the given parameter to a string.
-func toString(value interface{}) string {
-	if value == nil {
-		return ""
-	}
-
-	switch v := value.(type) {
-	case string:
-		return v
-	case []byte:
-		return string(v)
-	case fmt.Stringer:
-		return v.String()
-	case error:
-		return v.Error()
-	}
-
-	rv := reflect.ValueOf(value)
-	for k := rv.Kind(); k == reflect.Ptr || k == reflect.Interface; k = rv.Kind() {
-		rv = rv.Elem()
-	}
-
-	switch rv.Kind() {
-	case reflect.String:
-		return rv.String()
-	case reflect.Int64, reflect.Int, reflect.Int32, reflect.Int16, reflect.Int8:
-		return strconv.FormatInt(rv.Int(), 10)
-	case reflect.Uint64, reflect.Uint, reflect.Uint32, reflect.Uint16, reflect.Uint8:
-		return strconv.FormatUint(rv.Uint(), 10)
-	case reflect.Bool:
-		return strconv.FormatBool(rv.Bool())
-	case reflect.Float64:
-		return strconv.FormatFloat(rv.Float(), 'g', -1, 64)
-	case reflect.Float32:
-		return strconv.FormatFloat(rv.Float(), 'g', -1, 32)
-	}
-	return fmt.Sprint(value)
 }

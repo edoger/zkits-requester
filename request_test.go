@@ -29,6 +29,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/edoger/zkits-requester/internal"
 )
 
 type testFmtStringer string
@@ -318,7 +320,7 @@ func TestToString(t *testing.T) {
 	}
 
 	for i, item := range items {
-		if got := toString(item.Give); got != item.Want {
+		if got := internal.ToString(item.Give); got != item.Want {
 			t.Fatalf("ToString() [%d] want %q got %q", i, item.Want, got)
 		}
 	}
