@@ -1,3 +1,3 @@
 module github.com/edoger/zkits-requester
 
-go 1.15
+go 1.14
