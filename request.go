@@ -33,6 +33,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/edoger/zkits-requester/internal"
 )
 
 var (
@@ -419,7 +421,7 @@ func (r *request) send(method string) (*http.Response, error) {
 	}
 
 	if r.client.http == nil {
-		return DefaultHTTPClient().Do(req)
+		return internal.Client.Do(req)
 	} else {
 		return r.client.http.Do(req)
 	}

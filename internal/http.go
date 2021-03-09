@@ -1,4 +1,4 @@
-// Copyright 2020 The ZKits Project Authors.
+// Copyright 2021 The ZKits Project Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,20 +12,25 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package requester
+package internal
 
 import (
 	"net/http"
-
-	"github.com/edoger/zkits-requester/internal"
 )
 
-// DefaultHTTPClient returns the built-in default HTTP client instance.
-func DefaultHTTPClient() *http.Client {
-	return internal.Client
+// The default HTTP client instance.
+var Client = NewClient()
+
+// NewTransport returns a new *http.Transport instance.
+func NewTransport() (t *http.Transport) {
+	// Clone is available in go 1.14 or later.
+	t = http.DefaultTransport.(*http.Transport).Clone()
+	// Default http.Transport.MaxIdleConnsPerHost is http.DefaultMaxIdleConnsPerHost (2).
+	t.MaxIdleConnsPerHost = 10
+	return t
 }
 
-// NewDefaultHTTPClient returns a new default HTTP client instance.
-func NewDefaultHTTPClient() *http.Client {
-	return internal.NewClient()
+// NewClient returns a new *http.Client instance.
+func NewClient() *http.Client {
+	return &http.Client{Transport: NewTransport()}
 }
