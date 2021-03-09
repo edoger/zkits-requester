@@ -24,7 +24,7 @@ import (
 	"strconv"
 )
 
-// Converts the given parameter to a string.
+// ToString converts the given parameter to a string.
 func ToString(value interface{}) string {
 	if value == nil {
 		return ""
@@ -63,12 +63,12 @@ func ToString(value interface{}) string {
 	return fmt.Sprint(value)
 }
 
-// Force close the given io.Closer ignore error.
+// ForceClose force close the given io.Closer ignore error.
 func ForceClose(c io.Closer) {
 	_ = c.Close()
 }
 
-// Determines whether the given target is a regular file.
+// ShouldBeRegularFile determines whether the given target is a regular file.
 func ShouldBeRegularFile(info os.FileInfo, err error) error {
 	if err != nil {
 		return err
@@ -79,7 +79,7 @@ func ShouldBeRegularFile(info os.FileInfo, err error) error {
 	return nil
 }
 
-// Writes the contents of a given io.Reader to upload writer.
+// WriteFormDataFromReader writes the contents of a given io.Reader to upload writer.
 func WriteFormDataFromReader(key, name string, w *multipart.Writer, src io.Reader) error {
 	fw, err := w.CreateFormFile(key, name)
 	if err != nil {
@@ -91,7 +91,7 @@ func WriteFormDataFromReader(key, name string, w *multipart.Writer, src io.Reade
 	return err
 }
 
-// Writes the contents of a given file to upload writer.
+// WriteFormDataFromFilePath writes the contents of a given file to upload writer.
 func WriteFormDataFromFilePath(key, p string, w *multipart.Writer) error {
 	f, err := os.Open(p)
 	if err != nil {
@@ -102,7 +102,7 @@ func WriteFormDataFromFilePath(key, p string, w *multipart.Writer) error {
 	return WriteFormDataFromReader(key, filepath.Base(f.Name()), w, f)
 }
 
-// Writes the downstream uploaded file to upload writer.
+// WriteFormDataFromFileHeader writes the downstream uploaded file to upload writer.
 func WriteFormDataFromFileHeader(key string, p *multipart.FileHeader, w *multipart.Writer) error {
 	f, err := p.Open()
 	if err != nil {
