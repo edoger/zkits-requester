@@ -66,6 +66,10 @@ type Request interface {
 	// header will be deleted.
 	WithHeader(string, string) Request
 
+	// WithHeaderValue adds a request header to the current request.
+	// This method will automatically convert the given parameter value to a string.
+	WithHeaderValue(string, interface{}) Request
+
 	// WithContentType adds the ContentType header information of the current request.
 	WithContentType(string) Request
 
@@ -217,6 +221,12 @@ func (r *request) WithHeader(key, value string) Request {
 	}
 	r.headers.Set(key, value)
 	return r
+}
+
+// WithHeaderValue adds a request header to the current request.
+// This method will automatically convert the given parameter value to a string.
+func (r *request) WithHeaderValue(key string, value interface{}) Request {
+	return r.WithHeader(key, internal.ToString(value))
 }
 
 // WithContentType adds the ContentType header information of the current request.

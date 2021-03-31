@@ -110,6 +110,9 @@ func TestRequest(t *testing.T) {
 		if req.WithHeader("X-Foo", "") == nil {
 			t.Fatal("Request.WithHeader() return nil")
 		}
+		if req.WithHeaderValue("X-Foo", 1) == nil {
+			t.Fatal("Request.WithHeaderValue() return nil")
+		}
 		if req.WithContentType("application/test") == nil {
 			t.Fatal("Request.WithContentType() return nil")
 		}
