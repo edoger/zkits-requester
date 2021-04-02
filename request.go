@@ -489,8 +489,6 @@ func (r *request) makeBodyReader() (io.Reader, error) {
 				return bytes.NewReader(data), nil
 			}
 		}
-		// In theory, this error will never be returned.
-		return nil, fmt.Errorf("invalid request body encoder: %s", r.bodyEncoder)
 	}
 
 	switch body := r.body.(type) {
