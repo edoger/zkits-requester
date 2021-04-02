@@ -300,25 +300,40 @@ func TestRequest(t *testing.T) {
 func TestToString(t *testing.T) {
 	s := "s"
 	n := 1
+	b := true
+	f := 1.5
+	f32 := float32(1.5)
+	iu64 := uint64(1)
 
 	items := []struct {
 		Give interface{}
 		Want string
 	}{
 		{"s", "s"},
-		{1, "1"},
-		{1.5, "1.5"},
+		{1, "1"}, // int
+		{int8(1), "1"},
+		{int16(1), "1"},
+		{int32(1), "1"},
+		{int64(1), "1"},
 		{uint(1), "1"},
+		{uint8(1), "1"},
+		{uint16(1), "1"},
+		{uint32(1), "1"},
+		{uint64(1), "1"},
+		{uint8(1), "1"},
+		{1.5, "1.5"}, // float64
 		{float32(1.5), "1.5"},
 		{[]byte("b"), "b"},
 		{errors.New("err"), "err"},
 		{testFmtStringer("s"), "s"},
 		{true, "true"},
+		{&b, "true"},  // *bool
+		{&s, "s"},     // *string
+		{&n, "1"},     // *int
+		{&f, "1.5"},   // *float64
+		{&f32, "1.5"}, // *float32
+		{&iu64, "1"},  // *uint64
 		{[]string{"s", "s"}, fmt.Sprint([]string{"s", "s"})},
-		{s, "s"},
-		{&s, "s"},
-		{n, "1"},
-		{&n, "1"},
 		{nil, ""},
 	}
 
