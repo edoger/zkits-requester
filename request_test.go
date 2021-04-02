@@ -427,18 +427,20 @@ func TestUpload(t *testing.T) {
 		if req.WithFormDataField("field", "test") == nil {
 			t.Fatal("Request.WithFormDataField() return nil")
 		}
+		if req.WithFormDataFields(map[string]interface{}{"field": "test"}) == nil {
+			t.Fatal("Request.WithFormDataFields() return nil")
+		}
 		if req.WithFormDataFile("transfer", "test/test.pdf") == nil {
 			t.Fatal("Request.WithFormDataFile() return nil")
 		}
 
-		req.WithFormDataField("field", "test")
-		req.WithFormDataField("upload", "foo")
+		req.WithFormDataFields(map[string]interface{}{"field": "test", "upload": "foo"})
 		req.WithFormDataField("upload", "bar")
 		if _, err := req.Upload(); err != nil {
 			t.Fatalf("Request.Upload() error: %s", err)
 		}
 
-		if gotFormField != "test-test" {
+		if gotFormField != "test-test-test" {
 			t.Fatalf("Request.Upload() got field: %s", gotFormField)
 		}
 		if wantFileMD5 != gotFileMD5 {

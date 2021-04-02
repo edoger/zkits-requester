@@ -144,6 +144,10 @@ type Request interface {
 	// If the given form value is nil, delete the corresponding form key.
 	WithFormDataField(string, interface{}) Request
 
+	// WithFormDataFields adds a form data key-value map for uploading to the current request.
+	// If the given form value is nil, delete the corresponding form key.
+	WithFormDataFields(fields map[string]interface{}) Request
+
 	// WithFormDataFile adds a file target for uploading to the current request.
 	// If the given form value is nil, delete the corresponding form key.
 	// This method supports adding string paths, opened file descriptors and
@@ -517,6 +521,15 @@ func (r *request) WithFormDataField(key string, value interface{}) Request {
 		return r.withFormData(key, nil)
 	}
 	return r.withFormData(key, &formDataValue{field: internal.ToString(value)})
+}
+
+// WithFormDataFields adds a form data key-value map for uploading to the current request.
+// If the given form value is nil, delete the corresponding form key.
+func (r *request) WithFormDataFields(fields map[string]interface{}) Request {
+	for key, value := range fields {
+		r.WithFormDataField(key, value)
+	}
+	return r
 }
 
 // WithFormDataFile adds a file target for uploading to the current request.
