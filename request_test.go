@@ -162,6 +162,9 @@ func TestRequest(t *testing.T) {
 		if req.WithFormBody(url.Values{}) == nil {
 			t.Fatal("Request.WithFormBody() return nil")
 		}
+		if req.WithFormBodyMap(map[string]interface{}{"key": 1}) == nil {
+			t.Fatal("Request.WithFormBody() return nil")
+		}
 
 		// check
 		req.WithMethod(http.MethodPut)

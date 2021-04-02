@@ -117,6 +117,10 @@ type Request interface {
 	// This method will force set "Content-Type" to "application/x-www-form-urlencoded".
 	WithFormBody(url.Values) Request
 
+	// WithFormBodyMap adds the request body key-value map as form (urlencoded).
+	// This method will force set "Content-Type" to "application/x-www-form-urlencoded".
+	WithFormBodyMap(body map[string]interface{}) Request
+
 	// Head sends the current request and returns the received response.
 	// This method will send the request using the HEAD method.
 	Head() (Response, error)
@@ -327,6 +331,16 @@ func (r *request) WithFormBody(body url.Values) Request {
 	r.bodyEncoder = ""
 	r.bodyType = "application/x-www-form-urlencoded"
 	return r
+}
+
+// WithFormBodyMap adds the request body key-value map as form (urlencoded).
+// This method will force set "Content-Type" to "application/x-www-form-urlencoded".
+func (r *request) WithFormBodyMap(body map[string]interface{}) Request {
+	values := make(url.Values, len(body))
+	for key, value := range body {
+		values.Set(key, internal.ToString(value))
+	}
+	return r.WithFormBody(values)
 }
 
 // Head sends the current request and returns the received response.
