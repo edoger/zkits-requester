@@ -24,7 +24,7 @@ import (
 // This is a built-in pool of request objects to provide reusable objects for simple requests.
 var requestPool = sync.Pool{New: func() interface{} { return new(request) }}
 
-// The Client interface defines the requester client.
+// Client interface defines the requester client.
 type Client interface {
 	// SetHTTPClient sets a private HTTP client instance for the current client.
 	// If a nil is given, the built-in default HTTP client is used.
