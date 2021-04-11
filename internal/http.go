@@ -18,7 +18,7 @@ import (
 	"net/http"
 )
 
-// The default HTTP client instance.
+// Client the default HTTP client instance.
 var Client = NewClient()
 
 // NewTransport returns a new *http.Transport instance.
